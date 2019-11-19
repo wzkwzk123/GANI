@@ -21,6 +21,7 @@ class Gan_imitation():
         self.learning_rate = args.learning_rate
         self.num_steps = args.num_steps
         self.log_fre = 100
+        self.save_flag = args.save_flag
 
         self.creat_model()
 
@@ -58,10 +59,11 @@ class Gan_imitation():
             self.D2 = self.discriminator(tf.concat([self.gen_input, self.G], 1))
 
         # mean(log(D) + log(1-(D(G))))
+        # the inputs for self.loss_d contains both expert and generator network output data
         self.loss_d = tf.reduce_mean(-tf.log(self.D1) - tf.log(1 - self.D2))
         self.loss_g = tf.reduce_mean(-tf.log(self.D2))
 
-        self.dis_pre_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="Dis_pre") # trainable variables
+        self.dis_pre_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="D_pre_train") # trainable variables
         self.dis_param = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="Dis")
         self.g_param = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="Gen")
 
@@ -79,6 +81,7 @@ class Gan_imitation():
         real_obs_train_data = self.real_obs[self.batch_size:self.batch_size*2]
         real_action_train_data = self.real_action[self.batch_size:self.batch_size*2]
         real_train_data = np.hstack((real_obs_train_data, real_action_train_data))
+
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
 
@@ -96,7 +99,7 @@ class Gan_imitation():
             for i, v in enumerate(self.dis_param):
                 sess.run(v.assign(self.dis_weights[i]))
             self.dis_weights = sess.run(self.dis_param)
-            for step in range(self):
+            for step in range(self.num_steps):
                 # update discriminator
                 dis_out = sess.run([self.D1], {self.x: real_train_data})
                 print("the output of the discriminator", dis_out)
@@ -110,9 +113,12 @@ class Gan_imitation():
                 if step % self.log_fre == 0:
                     print('{}:{}\t{}'.format(step, loss_dis, loss_g))
 
+            if self.save_flag:
+                saver = tf.train.Saver()
+                saver.save(sess,"Model/model.ckpt")
 
-            # after pre train the discriminator network,
-            # we should copy the network parameters to the new discriminator network
+
+
 if __name__ == "__main__":
     data = data_save_read.read_data('input_data.xlsx')
     random.shuffle(data)

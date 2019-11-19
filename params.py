@@ -17,6 +17,7 @@ class Param():
         main_params.add_argument('--learning_rate', type=float, default=0.0003)
         main_params.add_argument('--num_pretrain_step', type=int, default=1000)
         main_params.add_argument('--num_steps', type=int, default=1000)
+        main_params.add_argument('--save_flag', type=bool, default=True)
         return main_params.parse_args()
 
     def get_pid_args(self):
