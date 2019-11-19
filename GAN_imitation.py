@@ -3,14 +3,14 @@ import tensorflow as tf
 import random
 import network
 from params import Param
+from DataProcess import data_save_read
 
 args = Param().get_alg_args()
 
 
 class Gan_imitation():
-    def __init__(self, obs, action, real_obs, real_action):
-        self.obs = obs
-        self.action = action
+    def __init__(self, real_obs, real_action, log_fre, args):
+
         self.real_obs = real_obs
         self.real_action = real_action
         self.pre_batch_size = args.pre_batch_size
@@ -20,16 +20,17 @@ class Gan_imitation():
         self.g_input_dimension = args.G_input_dimension
         self.learning_rate = args.learning_rate
         self.num_steps = args.num_steps
+        self.log_fre = 100
 
         self.creat_model()
 
 
     # input -- (none, 5)
     def discriminator(self, input):
-        return network.mlp(x=input, scope="discriminator", output_dim=args.D_output_dimension)
+        return network.mlp(x=input,hidden_sizes=30, scope="discriminator", output_dim=args.D_output_dimension)
 
     def generator(self, input):
-        return network.mlp(x=input, scope="generator", output_dim=args.G_output_dimension)
+        return network.mlp(x=input, hidden_sizes=30, scope="generator", output_dim=args.G_output_dimension)
 
     def creat_model(self):
         with tf.variable_scope("D_pre_train"):
@@ -54,7 +55,7 @@ class Gan_imitation():
             self.x = tf.placeholder(tf.float32, shape=(self.batch_size, self.d_input_dimension))
             self.D1 = self.discriminator(self.x)
             scope.reuse_variables()
-            self.D2 = self.discriminator(tf.concat([self.gen_input, self.G]))
+            self.D2 = self.discriminator(tf.concat([self.gen_input, self.G], 1))
 
         # mean(log(D) + log(1-(D(G))))
         self.loss_d = tf.reduce_mean(-tf.log(self.D1) - tf.log(1 - self.D2))
@@ -84,33 +85,47 @@ class Gan_imitation():
             for i in range(args.num_pretrain_step):
                 # np.ones() -- the discriminator network should give the real data (expert actions) value 1,
                 pre_loss, _ = sess.run([self.pre_loss, self.optimize_pre],
-                         {self.pre_input:pre_input,
+                         {self.pre_input:np.reshape(pre_input, (self.pre_batch_size, self.d_input_dimension)),
                           self.pre_label:np.ones((self.pre_batch_size, self.d_output_dimension))})
 
                 # get the pre trained discriminator parameters
-                self.dis_weights = sess.run(self.dis_pre_params)
+            self.dis_weights = sess.run(self.dis_pre_params)
 
-                # copy
+            # copy
 
-                for i, v in enumerate(self.dis_param):
-                    sess.run(v.assign(self.dis_weights[i]))
-                self.dis_weights = sess.run(self.dis_param)
-                for step in range(self):
-                    # update discriminator
-                    dis_out = sess.run([self.D1], {self.x: real_train_data})
-                    print("the output of the discriminator", dis_out)
-                    loss_dis, _ = sess.run([self.loss_d, self.optimize_dis], {})
+            for i, v in enumerate(self.dis_param):
+                sess.run(v.assign(self.dis_weights[i]))
+            self.dis_weights = sess.run(self.dis_param)
+            for step in range(self):
+                # update discriminator
+                dis_out = sess.run([self.D1], {self.x: real_train_data})
+                print("the output of the discriminator", dis_out)
+                loss_dis, _ = sess.run([self.loss_d, self.optimize_dis],
+                                           {self.x:real_train_data,
+                                            self.gen_input:real_obs_train_data
+                                            })
+                # update generator
+                loss_g, _ = sess.run([self.loss_g, self.optimize_gen], {self.gen_input:real_obs_train_data})
 
-                    # update generator
-
-
+                if step % self.log_fre == 0:
+                    print('{}:{}\t{}'.format(step, loss_dis, loss_g))
 
 
             # after pre train the discriminator network,
             # we should copy the network parameters to the new discriminator network
-
-
-
+if __name__ == "__main__":
+    data = data_save_read.read_data('input_data.xlsx')
+    random.shuffle(data)
+    data_obs = []
+    data_label = []
+    argsmain = Param().get_alg_args()
+    for i in range(len(data)):
+        # Get Train Data And Label
+        print('i {}, data {}, label {}'.format(i, data[i][0:-1], data[i][-1:]))
+        data_obs.append(data[i][0:-1])
+        data_label.append(data[i][-1:])
+    model = Gan_imitation(data_obs, data_label, 10, argsmain)
+    model.train()
 
 
 
