@@ -15,8 +15,8 @@ class Param():
         main_params.add_argument('--batch_size', type=int, default=128)
         main_params.add_argument('--pre_batch_size', type=int, default=10)
         main_params.add_argument('--learning_rate', type=float, default=0.0003)
-        main_params.add_argument('--num_pretrain_step', type=int, default=1000)
-        main_params.add_argument('--num_steps', type=int, default=1000)
+        main_params.add_argument('--num_pretrain_step', type=int, default=500)
+        main_params.add_argument('--num_steps', type=int, default=5000)
         main_params.add_argument('--save_flag', type=bool, default=True)
         return main_params.parse_args()
 

@@ -55,7 +55,7 @@ def CratpoleControl(args):
         if args.isprint and t == args.step_limit:
             print("Episode finished after {} timesteps".format(t + 1))
 
-        data_save_read.write_date(ob_plot1, ob_plot2, ob_plot3, ob_plot4, action_plot)
+        # data_save_read.write_date(ob_plot1, ob_plot2, ob_plot3, ob_plot4, action_plot)
     return True
 
 def plot_figure(time_step, ob_plot1, ob_plot2, ob_plot3, ob_plot4):

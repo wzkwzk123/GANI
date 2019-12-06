@@ -44,22 +44,24 @@ class Gan_imitation():
             self.D_pre = self.discriminator(self.pre_input)
             self.pre_loss = tf.reduce_mean(tf.square(self.pre_label - self.D_pre))
             learning_rate = tf.train.exponential_decay(self.learning_rate, 0, 100, 0.96, staircase=True)
+            print("learning_rate", learning_rate)
             self.optimize_pre = tf.train.AdamOptimizer(learning_rate).minimize(self.pre_loss)
 
 
         with tf.variable_scope("Gen"):
-            self.gen_input = tf.placeholder(tf.float32, shape=(self.batch_size, self.g_input_dimension))
+            self.gen_input = tf.placeholder(tf.float32, shape=(None, self.g_input_dimension), name="g_input")
             self.G = self.generator(self.gen_input)
 
 
         with tf.variable_scope("Dis") as scope:
-            self.x = tf.placeholder(tf.float32, shape=(self.batch_size, self.d_input_dimension))
+            self.x = tf.placeholder(tf.float32, shape=(None, self.d_input_dimension))
             self.D1 = self.discriminator(self.x)
             scope.reuse_variables()
             self.D2 = self.discriminator(tf.concat([self.gen_input, self.G], 1))
 
         # mean(log(D) + log(1-(D(G))))
         # the inputs for self.loss_d contains both expert and generator network output data
+        # small_number = 0.000000001
         self.loss_d = tf.reduce_mean(-tf.log(self.D1) - tf.log(1 - self.D2))
         self.loss_g = tf.reduce_mean(-tf.log(self.D2))
 
@@ -67,8 +69,9 @@ class Gan_imitation():
         self.dis_param = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="Dis")
         self.g_param = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="Gen")
 
-        self.optimize_dis = tf.train.AdamOptimizer().minimize(self.loss_d, var_list=self.dis_param)
-        self.optimize_gen = tf.train.AdamOptimizer().minimize(self.loss_g, var_list=self.g_param)
+        learning_rate = tf.train.exponential_decay(self.learning_rate, 0, 100, 0.96, staircase=True)
+        self.optimize_dis = tf.train.AdamOptimizer(0.00001).minimize(self.loss_d, var_list=self.dis_param)
+        self.optimize_gen = tf.train.AdamOptimizer(0.00001).minimize(self.loss_g, var_list=self.g_param)
 
 
     def train(self):
@@ -78,8 +81,8 @@ class Gan_imitation():
         pre_input = np.hstack((real_obs_pre_train, real_action_pre_train))
 
         # data for train
-        real_obs_train_data = self.real_obs[self.batch_size:self.batch_size*2]
-        real_action_train_data = self.real_action[self.batch_size:self.batch_size*2]
+        real_obs_train_data = self.real_obs[0:self.batch_size*3]
+        real_action_train_data = self.real_action[0:self.batch_size*3]
         real_train_data = np.hstack((real_obs_train_data, real_action_train_data))
 
         with tf.Session() as sess:
@@ -90,6 +93,7 @@ class Gan_imitation():
                 pre_loss, _ = sess.run([self.pre_loss, self.optimize_pre],
                          {self.pre_input:np.reshape(pre_input, (self.pre_batch_size, self.d_input_dimension)),
                           self.pre_label:np.ones((self.pre_batch_size, self.d_output_dimension))})
+                print("pre_loss", pre_loss)
 
                 # get the pre trained discriminator parameters
             self.dis_weights = sess.run(self.dis_pre_params)
@@ -99,23 +103,31 @@ class Gan_imitation():
             for i, v in enumerate(self.dis_param):
                 sess.run(v.assign(self.dis_weights[i]))
             self.dis_weights = sess.run(self.dis_param)
+
             for step in range(self.num_steps):
                 # update discriminator
                 dis_out = sess.run([self.D1], {self.x: real_train_data})
-                print("the output of the discriminator", dis_out)
-                loss_dis, _ = sess.run([self.loss_d, self.optimize_dis],
-                                           {self.x:real_train_data,
-                                            self.gen_input:real_obs_train_data
-                                            })
+                # print("the output of the discriminator", dis_out)
+                for jjj in range(30):
+                    loss_dis, _ = sess.run([self.loss_d, self.optimize_dis],
+                                               {self.x:real_train_data,
+                                                self.gen_input:real_obs_train_data
+                                                })
                 # update generator
-                loss_g, _ = sess.run([self.loss_g, self.optimize_gen], {self.gen_input:real_obs_train_data})
+                for jjj in range(30):
+                    loss_g, _ = sess.run([self.loss_g, self.optimize_gen], {self.gen_input:real_obs_train_data})
 
                 if step % self.log_fre == 0:
-                    print('{}:{}\t{}'.format(step, loss_dis, loss_g))
+                    print('{}:loss_dis:{}\tloss_g:{}'.format(step, loss_dis, loss_g))
 
-            if self.save_flag:
-                saver = tf.train.Saver()
-                saver.save(sess,"Model/model.ckpt")
+                if self.save_flag:
+                    if step % 500 == 0:
+                        saver = tf.train.Saver()
+                        saver.save(sess,"Model/model.ckpt", global_step=step) # specify sess instance
+
+            if True:
+                # tensor board
+                writer = tf.summary.FileWriter("logs/", tf.get_default_graph())
 
 
 
@@ -127,7 +139,7 @@ if __name__ == "__main__":
     argsmain = Param().get_alg_args()
     for i in range(len(data)):
         # Get Train Data And Label
-        print('i {}, data {}, label {}'.format(i, data[i][0:-1], data[i][-1:]))
+        # print('i {}, data {}, label {}'.format(i, data[i][0:-1], data[i][-1:]))
         data_obs.append(data[i][0:-1])
         data_label.append(data[i][-1:])
     model = Gan_imitation(data_obs, data_label, 10, argsmain)
